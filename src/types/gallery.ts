@@ -33,7 +33,7 @@ export interface CostumeView {
 }
 
 export interface CostumeItem {
-  source?: 'upload' | 'charadb' | 'gia-anime' | 'shisei'
+  source?: 'upload' | 'charadb' | 'gia-anime' | 'shisei' | 'custom'
   views?: CostumeView[]
   selectedView?: string
   一级分类?: '现实' | '二次元'
@@ -105,7 +105,7 @@ export interface WorkflowParameterOverrides {
 
 export interface ComfyUiParams {
   parameterOverrides?: WorkflowParameterOverrides
-  workflowPreset: 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img' | 'custom'
+  workflowPreset: 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img' | 'pose_3img' | 'custom'
   workflowJson: string
   promptNodeId: string
   portraitNodeId: string

@@ -94,6 +94,11 @@ export const costumesQuery = queryOptions({
       if (!res.ok) throw new Error(`加载服装数据失败: HTTP ${res.status}`)
       return (await res.json()) as CostumeItem[]
     }))
+    if (import.meta.env.VITE_LOCAL_IMAGE_BACKUP) {
+      const uploaded = await fetch('/api/local-costumes')
+      if (!uploaded.ok) throw new Error('加载上传服装失败')
+      lists.unshift(await uploaded.json() as CostumeItem[])
+    }
     return lists.flat()
   },
 })

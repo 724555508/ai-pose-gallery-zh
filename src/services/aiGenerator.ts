@@ -1,7 +1,9 @@
+import { createId } from '@/lib/createId'
 import type { ApiConfig, ExtraReferenceImage, ImageProviderId, RecipeState } from '@/types/gallery'
 import { applyWorkflowOverrides, getWorkflowImages, validateReferenceCombinations, workflowIdentity, type ComfyObjectInfo } from '@/lib/comfyWorkflowParameters'
 import { poseImagePath, referenceImageUrl } from '@/lib/recipeImages'
 import qwen2509ThreeImageWorkflow from '@/workflows/qwen_image_edit_2509_3img.api.json'
+import poseThreeImageWorkflow from '@/workflows/pose_3img.api.json'
 
 export interface ProviderModelOption {
   value: string
@@ -9,7 +11,7 @@ export interface ProviderModelOption {
 }
 
 export interface PreparedComfyGeneration {
-  workflow: Record<string, unknown>
+  workflow: ComfyWorkflow
 }
 
 export const PROVIDER_META: Record<
@@ -466,7 +468,7 @@ function extractUniversalImage(json: any): string | null {
 type ComfyNode = { class_type: string; inputs: Record<string, any>; _meta?: { title?: string; studio?: { imageRole?: string } } }
 type ComfyWorkflow = Record<string, ComfyNode>
 
-export type ComfyPresetId = 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img'
+export type ComfyPresetId = 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img' | 'pose_3img'
 
 export interface ComfyNodeMappings {
   promptNodeId: string
@@ -615,6 +617,11 @@ export const COMFYUI_WORKFLOW_TEMPLATES: Record<
   ComfyPresetId,
   { label: string; workflow: ComfyWorkflow; defaults: ComfyNodeMappings }
 > = {
+  pose_3img: {
+    label: 'Pose 三图合成（Qwen 2.1 · 专用 LoRA）',
+    workflow: poseThreeImageWorkflow as ComfyWorkflow,
+    defaults: { promptNodeId: '9', portraitNodeId: '1', costumeNodeId: '2', poseNodeId: '3', stitchedNodeId: 'none' },
+  },
   qwen2509_3img: {
     label: 'Qwen Image Edit 2509 三图合成（人像+服装+姿势）· 推荐',
     workflow: qwen2509ThreeImageWorkflow as ComfyWorkflow,
@@ -1052,7 +1059,7 @@ async function uploadImageToComfy(
     throw new Error(`读取参考图失败：${src.slice(0, 80)}`)
   }
   const form = new FormData()
-  form.append('image', dataUrlToBlob(dataUrl), `${filenamePrefix}_${Date.now()}.png`)
+  form.append('image', dataUrlToBlob(dataUrl), `${filenamePrefix}_${createId()}.png`)
   form.append('subfolder', 'pose_studio')
   form.append('overwrite', 'true')
 
@@ -1364,7 +1371,7 @@ async function trackComfyTask(params: {
   }
 }
 
-async function generateWithComfyUi(params: {
+type ComfyGenerationParams = {
   recipe: RecipeState
   prompt: string
   config: ApiConfig
@@ -1374,11 +1381,12 @@ async function generateWithComfyUi(params: {
   onSubmitting?: (prepared?: PreparedComfyGeneration) => Promise<void>
   onSubmitted?: (task: ComfyTaskHandle) => Promise<void>
   signal?: AbortSignal
-}): Promise<{ imageUrl: string; modelUsed: string; providerUsed: ImageProviderId }> {
+}
+
+export async function prepareComfyGeneration(params: ComfyGenerationParams): Promise<PreparedComfyGeneration> {
   const { recipe, prompt, config, baseUrl, apiKey } = params
   const report = params.onProgress ?? (() => {})
   const cp = config.comfyuiParams
-  const timeoutSec = Math.max(60, cp.timeoutSec || 600)
   const parsedInfo = parseComfyWorkflowNodes(cp.workflowJson)
   if (!parsedInfo.valid) {
     throw new Error(`[ComfyUI] ${parsedInfo.error || '工作流 JSON 无效'}`)
@@ -1490,11 +1498,19 @@ async function generateWithComfyUi(params: {
     }
   }
 
+  return { workflow }
+}
+
+async function generateWithComfyUi(params: ComfyGenerationParams): Promise<GenerationResult> {
+  const { workflow } = await prepareComfyGeneration(params)
+  const { baseUrl, apiKey } = params
+  const timeoutSec = Math.max(60, params.config.comfyuiParams.timeoutSec || 600)
+  const report = params.onProgress ?? (() => {})
   // /prompt is not idempotent: never retry an ambiguous submission.
   checkTrackingSignal(params.signal)
   await params.onSubmitting?.({ workflow: JSON.parse(JSON.stringify(workflow)) })
   checkTrackingSignal(params.signal)
-  const clientId = `pose_studio_${crypto.randomUUID()}`
+  const clientId = `pose_studio_${createId()}`
   const submittedAt = Date.now()
   report({ stage: 'queue', message: '正在提交工作流…' })
   // Subscribe before submission; HTTP reconciliation covers events received before prompt_id is known.

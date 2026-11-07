@@ -33,6 +33,8 @@ import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
 import { Field, Section } from '@/components/common/FormSection'
 import { ComfyConnectionStatus } from '@/components/studio/ComfyConnectionStatus'
 import { WorkflowParameters } from '@/components/studio/WorkflowParameters'
+import { LocalQueuePanel } from '@/components/studio/LocalQueuePanel'
+import { localQueueEnabled } from '@/store/useLocalQueue'
 import { applyWorkflowOverrides, validateReferenceCombinations, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { PageHeader } from '@/components/common/PageHeader'
 import { Badge } from '@/components/ui/badge'
@@ -93,6 +95,7 @@ function StudioPage() {
     generationProgress,
     generationError,
     startGeneration,
+    queueSubmitting,
     setPortrait,
     setCostume,
     setPose,
@@ -1439,10 +1442,12 @@ function StudioPage() {
 
             <Button
               onClick={handleGenerate}
-              disabled={!hydrated || !!activeTask || isGenerating || uploadingSlot !== null}
+              disabled={!hydrated || !!activeTask || isGenerating || queueSubmitting || uploadingSlot !== null}
               className="h-11 w-full text-sm font-semibold"
             >
-              {isGenerating ? (
+              {queueSubmitting ? (
+                <><LoaderCircleIcon className="size-4 animate-spin" />正在准备并加入队列…</>
+              ) : isGenerating ? (
                 <>
                   <LoaderCircleIcon className="size-4 animate-spin" />
                   生成中…
@@ -1450,7 +1455,7 @@ function StudioPage() {
               ) : (
                 <>
                   <SparklesIcon className="size-4" />
-                  生成角色图
+                  {localQueueEnabled && activeProvider === 'comfyui' ? '加入生成队列' : '生成角色图'}
                 </>
               )}
             </Button>
@@ -1459,6 +1464,7 @@ function StudioPage() {
 
         {/* 右栏：专注展示 AI 生成结果与生成状态 */}
         <div className="min-w-0 space-y-4 lg:col-span-5">
+          {localQueueEnabled && <LocalQueuePanel />}
           <Section
             title="生成结果"
             className="@lg/section:grid-cols-1"

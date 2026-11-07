@@ -1,4 +1,5 @@
 import { ZoomViewport } from '@/components/common/ZoomViewport'
+import { UploadCostume } from '@/components/studio/UploadCostume'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -123,7 +124,7 @@ function CostumesPage() {
 
   return (
     <>
-      <PageHeader title="服装穿搭库" />
+      <PageHeader title="服装穿搭库" actions={import.meta.env.VITE_LOCAL_IMAGE_BACKUP ? <UploadCostume onSaved={(item) => { setSource('custom'); setKind(item.一级分类 || '现实'); setCategory(''); setTag('all'); setQuery(''); setShown(60); setViewerIndex(null) }} /> : undefined} />
 
       <div className="flex flex-wrap items-center justify-between gap-2" aria-label="服装一级分类">
         <div className="flex flex-wrap gap-2">

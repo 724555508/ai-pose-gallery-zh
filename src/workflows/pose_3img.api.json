@@ -1,0 +1,177 @@
+{
+  "1": {
+    "inputs": {
+      "image": "portrait_ref.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "图1：人像参考 (Portrait)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "image": "costume_ref.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "图2：服装参考 (Costume)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "pose_ref.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "图3：姿势参考 (Pose)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "加载 Qwen Image 2.1 基础模型"
+    }
+  },
+  "5": {
+    "inputs": {
+      "lora_name": "VNCCS_QI2_PoseStudioV2_3294845.safetensors",
+      "strength_model": 1,
+      "model": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "加载姿态编辑 LoRA 适配器 (Qwen 2.1 专用)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "device": "auto",
+      "dtype": "default",
+      "model": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "QwenImage21Cache",
+    "_meta": {
+      "title": "Qwen Image 2.1 条件缓存"
+    }
+  },
+  "7": {
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载 Qwen3-VL 8B 编码器"
+    }
+  },
+  "8": {
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载 Qwen Image 2.1 VAE"
+    }
+  },
+  "9": {
+    "inputs": {
+      "prompt": "请根据提供的 3 张参考图，生成一张完整的真实人物照片：\n• 人物：图1中的人物，保持其脸型、五官、发型（收腰感短发（长发尾・空气刘海））和发色一致。人物的肤色必须与图一人物一致，所有裸露皮肤（包括服装镂空处露出的皮肤）必须与脸部肤色统一，统一后的肤色与质感按风格要求呈现。\n• 服装：让人物穿上图2中展示的整套服装和配饰（参考名称：白色迷你连衣裙・红色长筒丝袜・高跟鞋），每件单品的颜色、款式、面料与配饰都以图2为准，名称仅作辅助说明。\n• 姿势：按照图3中人体模型的动作和镜头角度摆姿势（M字开腿（坐位・双手后撑），正面）；图3只是动作示意，最终画面中的人物是真人，皮肤真实自然，穿着图2的服装。\n• 风格：写实商业摄影级质感，85mm 人像镜头，自然柔和光影，真实肌肤纹理与织物细节，8k 高清画质。 人物比例协调，手部与五官自然，光影统一。\n画面中没有任何文字、标志或水印。",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "clip": [
+        "7",
+        0
+      ],
+      "images.image_1": [
+        "1",
+        0
+      ],
+      "images.image_2": [
+        "2",
+        0
+      ],
+      "images.image_3": [
+        "3",
+        0
+      ],
+      "vae": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImage21",
+    "_meta": {
+      "title": "正向提示词与多图编码 (Qwen 2.1)"
+    }
+  },
+  "10": {
+    "inputs": {
+      "seed": 20261031,
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "6",
+        0
+      ],
+      "positive": [
+        "9",
+        0
+      ],
+      "negative": [
+        "9",
+        1
+      ],
+      "latent_image": [
+        "9",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler 采样器"
+    }
+  },
+  "11": {
+    "inputs": {
+      "samples": [
+        "10",
+        0
+      ],
+      "vae": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 解码"
+    }
+  },
+  "12": {
+    "inputs": {
+      "filename_prefix": "pose_studio/result",
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存生成结果"
+    }
+  }
+}

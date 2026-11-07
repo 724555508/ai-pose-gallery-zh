@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { localImageBackupPlugin } from './scripts/localImageBackup.ts'
+import { localQueuePlugin } from './scripts/localQueuePlugin.ts'
+import { localCostumesPlugin } from './scripts/localCostumesPlugin.ts'
 
 const MIME: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
@@ -115,9 +118,13 @@ const comfyProxy = {
   },
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  define: { 'import.meta.env.VITE_LOCAL_IMAGE_BACKUP': JSON.stringify(command === 'serve') },
   publicDir: false,
   plugins: [
+    localImageBackupPlugin(import.meta.dirname),
+    localQueuePlugin(import.meta.dirname, COMFYUI_URL),
+    localCostumesPlugin(import.meta.dirname),
     localAssetsAndProxyPlugin(),
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
@@ -140,10 +147,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 5173,
     proxy: comfyProxy,
   },
   preview: {
     proxy: comfyProxy,
   },
-})
+}))

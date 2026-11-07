@@ -26,6 +26,10 @@ node_modules/
 # 构建产物与原始 PNG 备份（不上传 Git）
 dist/
 backups/
+outputs/
+.local-queue/
+.local-costumes/
+img/custom-costumes/
 img/costume/*.png
 img/portrait/*.png
 img/depth/*.png

@@ -1,3 +1,4 @@
+import { createId } from '@/lib/createId'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { toast } from '@/lib/notifications'
@@ -84,7 +85,7 @@ export function WorkflowParameters({ onPreview, onUploadingChange }: { onPreview
     try {
       const url = await fileToDataUrl(file)
       if (currentIdentityRef.current !== startedIdentity || startedEpoch !== readEpoch.current) return
-      setWorkflowImage(nodeId, { id: crypto.randomUUID(), name: file.name, url, role }, startedIdentity)
+      setWorkflowImage(nodeId, { id: createId(), name: file.name, url, role }, startedIdentity)
     } catch {
       if (currentIdentityRef.current === startedIdentity && startedEpoch === readEpoch.current) toast.error('图片读取失败，已保留原图，请重新选择')
     } finally {

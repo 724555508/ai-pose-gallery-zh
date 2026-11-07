@@ -8,14 +8,16 @@ import { workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { Button } from '@/components/ui/button'
 import { buildRecipePrompt } from '@/services/aiGenerator'
 import { useStudio } from '@/store/studioStore'
+import { localQueueEnabled } from '@/store/useLocalQueue'
 
 export function RecipeDock() {
   const { pathname } = useLocation()
-  const { recipe, apiConfig, isGenerating, setPortrait, setCostume, setPose, toggleRecipePoseDepth, clearRecipe, randomizeRecipe } = useStudio()
+  const { recipe, apiConfig, isGenerating, hydrated, activeTask, queueSubmitting, startGeneration, setPortrait, setCostume, setPose, toggleRecipePoseDepth, clearRecipe, randomizeRecipe } = useStudio()
   const qc = useQueryClient()
   const extraCount = (recipe.extraImages || []).length
   const workflowImages = apiConfig.activeProvider === 'comfyui' && recipe.workflowImagesIdentity === workflowIdentity(apiConfig.comfyuiParams.workflowJson) ? Object.values(recipe.workflowImages || {}) : []
   const count = [recipe.portrait, recipe.costume, recipe.pose].filter(Boolean).length + extraCount + workflowImages.length
+  const directQueue = localQueueEnabled && apiConfig.activeProvider === 'comfyui'
 
   // 在合成台、设置页、指南页隐藏底部悬浮栏，避免与页面内组件重复
   if (pathname.startsWith('/studio') || pathname.startsWith('/settings') || pathname.startsWith('/guide')) {
@@ -166,7 +168,26 @@ export function RecipeDock() {
               </Button>
             </>
           )}
-          <Button size="sm" className="h-8 px-3 text-xs" asChild>
+          {directQueue ? (
+            <>
+              <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs" asChild>
+                <Link to="/studio">合成台</Link>
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 px-3 text-xs"
+                disabled={!hydrated || count === 0 || queueSubmitting || isGenerating || !!activeTask}
+                title="使用当前配方、提示词与 ComfyUI 配置直接加入队列"
+                onClick={() => void startGeneration()}
+              >
+                {queueSubmitting ? (
+                  <><LoaderCircleIcon className="size-3.5 animate-spin" />加入中…</>
+                ) : (
+                  <><SparklesIcon className="size-3.5" />合成 ({count})</>
+                )}
+              </Button>
+            </>
+          ) : <Button size="sm" className="h-8 px-3 text-xs" asChild>
             <Link to="/studio">
               {isGenerating ? (
                 <>
@@ -180,7 +201,7 @@ export function RecipeDock() {
                 </>
               )}
             </Link>
-          </Button>
+          </Button>}
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { createId } from '@/lib/createId'
 import { createContext, type ReactNode, useContext, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { toast } from '@/lib/notifications'
 import { isNsfwCostume, isNsfwPose } from '@/api/gallery'
@@ -15,6 +16,9 @@ import { useComfyConnection, type ComfyConnectionState } from './useComfyConnect
 import { idbRead, idbWrite } from '@/lib/idbStorage'
 import { parseParameterWorkflow, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { durableImage, snapshotGeneration } from '@/lib/generationSnapshot'
+import { backupGeneratedImage } from '@/lib/localImageBackup'
+import { useLocalQueue, localQueueEnabled } from './useLocalQueue'
+import type { QueueState } from '@/types/localQueue'
 import { recipeBackup } from '@/lib/recipeImages'
 import { randomSlot, type RandomScope, type ReferencePools, type ReferenceSlot } from '@/lib/randomRecipe'
 import {
@@ -22,6 +26,7 @@ import {
   COMFYUI_WORKFLOW_TEMPLATES,
   DEFAULT_COMFY_PRESET,
   generateCharacterImage,
+  prepareComfyGeneration,
   resumeComfyTask,
   ComfyTaskError,
   ComfySubmissionRejectedError,
@@ -222,6 +227,10 @@ interface StudioContextValue {
   generationProgress: GenerationProgress | null
   generationError: string
   startGeneration: (overridePrompt?: string) => Promise<void>
+  localQueue: QueueState | null
+  queueError: string
+  queueSubmitting: boolean
+  queueAction: (action: string, id?: string) => Promise<void>
   refreshStitchPreview: () => Promise<void>
   setPortrait: (item: PortraitItem | null) => void
   setCostume: (item: CostumeItem | null) => void
@@ -600,7 +609,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     return write
   }
   const addHistory = (item: Omit<GenerationHistoryItem, 'id' | 'createdAt'>) => {
-    void persistHistory((current) => [{ ...item, id: crypto.randomUUID(), createdAt: Date.now() }, ...current].slice(0, 30)).catch(() => toast.error('历史记录保存失败'))
+    void persistHistory((current) => [{ ...item, id: createId(), createdAt: Date.now() }, ...current].slice(0, 30)).catch(() => toast.error('历史记录保存失败'))
   }
   const removeHistoryItem = (id: string) => {
     void persistHistory((current) => current.filter((x) => x.id !== id)).then(() => toast.success('已删除该条记录')).catch(() => toast.error('删除失败'))
@@ -608,6 +617,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const clearHistory = () => {
     void persistHistory(() => []).then(() => { localStorage.removeItem(HISTORY_KEY); toast.success('已清空记录') }).catch(() => toast.error('清空记录失败'))
   }
+
+  const [queueSubmitting, setQueueSubmitting] = useState(false)
+  const queueSubmittingRef = useRef(false)
+  const localQueue = useLocalQueue(async (item) => {
+    await persistHistory((current) => [item, ...current.filter((entry) => entry.id !== item.id)].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30))
+    setPreviewUrl(item.imageUrl)
+  }, idbHydrated)
 
   const refreshStitchPreview = async () => {
     try {
@@ -629,13 +645,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const imageUrl = await durableImage(result.imageUrl)
     signal.throwIfAborted()
     setPreviewUrl(imageUrl)
-    const id = record.task ? `comfy:${record.task.baseUrl}:${record.task.promptId}` : crypto.randomUUID()
+    const id = record.task ? `comfy:${record.task.baseUrl}:${record.task.promptId}` : createId()
     await persistHistory((current) => {
       signal.throwIfAborted()
       return [{ id, createdAt: Date.now(), imageUrl, provider: result.providerUsed, model: result.modelUsed, prompt: record.prompt, recipeSummary: record.summary, snapshot: record.snapshot }, ...current.filter((x) => x.id !== id)].slice(0, 30)
     })
     signal.throwIfAborted()
     await saveActive(null)
+    try {
+      await backupGeneratedImage(imageUrl)
+    } catch (error) {
+      toast.warning(`图片已保存到浏览器，但本地备份失败：${error instanceof Error ? error.message : '未知错误'}`)
+      return
+    }
     toast.success('角色图已完成并保存')
   }
   const resumeGeneration = async () => {
@@ -681,6 +703,24 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const configSnapshot = apiConfig
     const finalPrompt = overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset, configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson) ? Object.values(recipeSnapshot.workflowImages || {}) : [])
     let record: ActiveTask = { prompt: finalPrompt, summary: [recipeSnapshot.portrait?.发型名称, recipeSnapshot.costume?.服装名称, recipeSnapshot.pose?.姿势名称].filter(Boolean).join(' + ') || '自定义合成' }
+    if (localQueueEnabled && configSnapshot.activeProvider === 'comfyui') {
+      if (queueSubmittingRef.current) return
+      queueSubmittingRef.current = true
+      setQueueSubmitting(true)
+      try {
+        const frozenConfig = structuredClone(configSnapshot)
+        const snapshot = await snapshotGeneration(structuredClone(recipeSnapshot), frozenConfig, finalPrompt)
+        const endpoint = frozenConfig.providers.comfyui
+        const baseUrl = (endpoint.baseUrl.trim() || PROVIDER_META.comfyui.defaultBaseUrl).replace(/\/+$/, '')
+        const prepared = await prepareComfyGeneration({ recipe: snapshot.recipe, config: frozenConfig, prompt: finalPrompt, baseUrl, apiKey: endpoint.apiKey })
+        snapshot.submittedWorkflowJson = JSON.stringify(prepared.workflow)
+        await localQueue.enqueue({ id: createId(), workflow: prepared.workflow, snapshot, prompt: finalPrompt, summary: record.summary, baseUrl, apiKey: endpoint.apiKey })
+        toast.success('已加入本地队列，可以继续提交下一条')
+      } catch (error) {
+        toast.error(`${error instanceof Error ? error.message : '加入队列失败'}。若提交时断线，请先查看队列确认是否已入队。`)
+      } finally { queueSubmittingRef.current = false; setQueueSubmitting(false) }
+      return
+    }
     isGeneratingRef.current = true
     setIsGenerating(true)
     setGeneratingModel(configSnapshot.activeProvider)
@@ -743,6 +783,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         generationProgress,
         generationError,
         startGeneration,
+        localQueue: localQueue.queue, queueError: localQueue.error, queueSubmitting, queueAction: localQueue.action,
         refreshStitchPreview,
         setPortrait,
         setCostume,
